@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3 id="home-title"> Projects </h3>
+  <br/>
+  {% for name, project in projects.items() %}
+    <div class="col-lg-2">
+      <a class="btn btn-lg btn-default" href="search/{{name}}"> {{name}} </a>
+    </div>
+  {% endfor %}
+{% endblock %}
+
+{% block includeCss %}
+<link rel="stylesheet" href="/static/css/home.css"/>
+{% endblock %}

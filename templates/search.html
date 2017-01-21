@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+
+<form class="form-horizontal" id="search-form" action="/results/{{project.name}}">
+
+  <div class="col-lg-5">
+    <h4 class="section-header">Numeric Filters</h4>
+    {% for field in project.numeric_fields %}
+      <div class="form-group">
+        <label for="n{{field}}" class="col-sm-3 control-label">{{field}}</label>
+        <div class="col-sm-8">
+          <input type="text" name="n{{field}}" class="form-control" id="n{{field}}" placeholder="[MIN, MAX]">
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="col-lg-7">
+    <h4 class="section-header">Discrete Filters</h4>
+    {% for field in project.discrete_fields.keys() %}
+      <div class="row" style="margin-bottom:15px">
+        <label class="col-sm-2 control-label discrete-field-label">{{field}}</label>
+        <div class="col-sm-10" id="field-{{field}}">
+          <span class="discrete-filters" id="dvalues-{{field}}"></span>
+          <span class="glyphicon glyphicon-plus add-discrete" id="dadd-{{field}}"></span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="col-lg-12">
+    <div id="search-div">
+    Results per page
+    <input type="text" name="resultsper" size="4" placeholder=50>
+    <button type="submit" id="search-button" class="btn btn-default">Search</button>
+    </div>
+  </div>
+
+  {% for field in project.discrete_fields.keys() %}
+    <input type="hidden" name="d{{field}}" id="dinput-{{field}}">
+  {% endfor %}
+
+</form>
+
+{% for field in project.discrete_fields %}
+<div class="selectpop pop" id="pop-{{field}}">
+  <h5>{{field}}</h5>
+  {% for value in project.discrete_fields[field] %}
+  <div class="discrete-selection-box"><button class="btn btn-default discrete-selection">{{value}}</button></div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<div class="pop overlay"></div>
+
+{% endblock %}
+
+{% block includeCss %}
+<link rel="stylesheet" href="/static/css/search.css"/>
+{% endblock %}
+
+{% block includeJs %}
+<script src="/static/js/search.js"></script>
+{% endblock %}

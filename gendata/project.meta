@@ -1,0 +1,9 @@
+{
+"name": "GenData1",
+"idf": ["rand", "time"],
+"numericf": ["CharCount", "AlphaSum", "TextY"],
+"discretef": {"BackColor": ["Red", "Orange", "Yellow", "Green", "Blue", "Purple", "White"],
+              "TextColor": ["Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Black"],
+              "Font": ["FreeMono", "DejaVuSans"]
+              }
+}

@@ -1,0 +1,5 @@
+{
+"id": {"time": "Jan11", "frame": 22},
+"numeric": {"confidence": 94, "lol" : 31},
+"discrete": {"color": "red", "value" : "one"}
+}
