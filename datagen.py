@@ -2,6 +2,8 @@ from PIL import Image, ImageDraw, ImageFont
 from random import randrange
 from io import BytesIO
 import threading
+from multiprocessing import Process
+import requests
 
 import time
 import pyapi
@@ -17,56 +19,66 @@ FONTS = [ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 40), ImageFont.tr
 FONTS_NAME = ["FreeMono", "DejaVuSans"]
 
 
-project = pyapi.Client().create_fproject(OUT_PATH + "project.meta")
-
-
 def task():
+    project = pyapi.Client().create_fproject(OUT_PATH + "project.meta")
+    with requests.Session() as session:
+        for ii in range(100000):
+            ids = {}
+            numericf = {}
+            discretef = {}
+            backno = randrange(7)
+            textno = randrange(7)
+            fontno = randrange(2)
 
-    for i in range(50000):
+            textlen = randrange(10) + 1
+            ypos = randrange(160)
+            alphaval = 0
+            text = ""
+            for c in range(textlen):
+                charval = randrange(26)
+                alphaval += (charval + 1)
+                text += chr(ord('A')+charval)
 
-        ids = {}
-        numericf = {}
-        discretef = {}
-        backno = randrange(7)
-        textno = randrange(7)
-        fontno = randrange(2)
+            ids["rand"] = randrange(100000)
+            ids["time"] = time.time()
+            numericf["CharCount"] = textlen
+            numericf["AlphaSum"] = alphaval
+            numericf["TextY"] = ypos
+            discretef["BackColor"] = BACK_COLORS_NAME[backno]
+            discretef["TextColor"] = TEXT_COLORS_NAME[textno]
+            discretef["Font"] = FONTS_NAME[fontno]
 
-        textlen = randrange(10) + 1
-        ypos = randrange(160)
-        alphaval = 0
-        text = ""
-        for c in range(textlen):
-            charval = randrange(26)
-            alphaval += (charval + 1)
-            text += chr(ord('A')+charval)
+            img = Image.new('RGB', IMAGE_SIZE, BACK_COLORS[backno])
+            d = ImageDraw.Draw(img)
 
-        ids["rand"] = randrange(100000)
-        ids["time"] = time.time()
-        numericf["CharCount"] = textlen
-        numericf["AlphaSum"] = alphaval
-        numericf["TextY"] = ypos
-        discretef["BackColor"] = BACK_COLORS_NAME[backno]
-        discretef["TextColor"] = TEXT_COLORS_NAME[textno]
-        discretef["Font"] = FONTS_NAME[fontno]
+            d.text((10, ypos), text, font=FONTS[fontno], fill=TEXT_COLORS[textno])
 
-        img = Image.new('RGB', IMAGE_SIZE, BACK_COLORS[backno])
-        d = ImageDraw.Draw(img)
-
-        d.text((10, ypos), text, font=FONTS[fontno], fill=TEXT_COLORS[textno])
-
-        output = BytesIO()
-        img.save(output, format="png")
-        #project.add_data(output.getvalue(), ids, numericf, discretef)
-        output.close()
+            output = BytesIO()
+            img.save(output, format="png")
+            project.add_data(output.getvalue(), ids, numericf, discretef, session)
+            output.close()
 
 
-threads = []
-for i in range(10):
-    t = threading.Thread(target=task)
-    threads.append(t)
+# task()
 
-for t in threads:
-    t.start()
+processes = []
+for i in range(3):
+    p = Process(target=task)
+    processes.append(p)
 
-for t in threads:
-    t.join()
+for p in processes:
+    p.start()
+
+for p in processes:
+    p.join()
+
+# threads = []
+# for i in range(10):
+#     t = threading.Thread(target=task)
+#     threads.append(t)
+#
+# for t in threads:
+#     t.start()
+#
+# for t in threads:
+#     t.join()

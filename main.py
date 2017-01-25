@@ -1,25 +1,27 @@
 import json
 import re
-from pymongo import MongoClient
+import requests
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from flask import Flask, render_template, request, abort, send_from_directory
+from bson import json_util
+from params import *
 
 app = Flask(__name__)
-
-DB = "db1"
-PROJECT_COLLECTION = "projects"
-COLLECTION_PREFIX = "project-"
-DB_ID_PREFIX = "id"
-DB_NUMERIC_PREFIX = "numeric"
-DB_DISCRETE_PREFIX = "discrete"
-
-# TODO for development
-HOST_IP = "http://edamame2"
-
-SEAWEED_VOLUME_URL = HOST_IP + ":8080/"
 
 NUM_RANGE_PATTERN = re.compile('(\[|\()(\d+)\s*,\s*(\d+)(\]|\))')
 
 projects = {}
+volume_lookup = {}
+
+
+def get_image_url(img_id):
+    volume = img_id.split(",")[0]
+    if volume not in volume_lookup:
+        getresult = requests.get(SEAWEED_LOOKUP_URL + str(volume))
+        location_data = json.loads(getresult.content.decode("utf-8"))
+        port = location_data["locations"][0]["url"].split(":")[1]
+        volume_lookup[volume] = port
+    return HOST_IP + ":" + str(volume_lookup[volume]) + "/" + img_id
 
 
 class Mongo:
@@ -28,22 +30,40 @@ class Mongo:
         self.db = MongoClient()[DB]
         self.pcol = self.db[PROJECT_COLLECTION]
         for data in self.pcol.find():
-            projects[data['name']] = Project(data['name'], data['idf'], data['numericf'], data['discretef'])
+            projects[data[PROJECT_NAME_KEY]] = Project(data)
 
     def add_project(self, data):
         self.pcol.insert_one(data)
 
+    def delete_project(self, project):
+        collection = self.db[ITEM_COLLECTION_PREFIX + project]
+        for item in collection.find():
+            requests.delete(get_image_url(item[ITEM_IMAGE_KEY]))
+        collection.drop()
+        self.pcol.delete_one({PROJECT_NAME_KEY: project})
+        del projects[project]
+
     def get_items(self, project, query=None):
-        return self.db[COLLECTION_PREFIX + project].find(query)
+        return self.db[ITEM_COLLECTION_PREFIX + project].find(query)
+
+    def get_projects_names(self):
+        cursor = self.pcol.find()
+        names = []
+        for project in cursor:
+            names.append(project[PROJECT_NAME_KEY])
+        return names
+
+    def get_size(self, project):
+        return self.db[ITEM_COLLECTION_PREFIX + project].find().count()
 
 
 class Project:
 
-    def __init__(self, name, ids, numeric, discrete):
-        self.name = name
-        self.id_fields = ids
-        self.numeric_fields = numeric
-        self.discrete_fields = discrete
+    def __init__(self, data):
+        self.name = data[PROJECT_NAME_KEY]
+        self.id_fields = data[PROJECT_ID_KEY]
+        self.numeric_fields = data[PROJECT_NUMERIC_KEY]
+        self.discrete_fields = data[PROJECT_DISCRETE_KEY]
 
 
 def get_project(project_name):
@@ -54,94 +74,91 @@ def get_project(project_name):
 
 # API stuff
 
-@app.route("/api/testPost", methods=['POST'])
-def testp():
-    try:
-        f = request.files['file']
-        f.save('var/uploads/FLSKSEVERAAA.txt')
-    except KeyError:
-        print("key error")
-    print(request.form['type'])
-    return "test response"
-
-
 @app.route("/api/newProject", methods=['POST'])
 def new_project():
     data = json.loads(request.form['json'])
-    if data['name'] in projects.keys():
+    if data[PROJECT_NAME_KEY] in projects.keys():
         return "project already exist"
-    proj = Project(data['name'], data['idf'], data['numericf'], data['discretef'])
-    projects[data['name']] = proj
+    project = Project(data)
+    projects[data[PROJECT_NAME_KEY]] = project
     mongo.add_project(data)
     return "project created"
 
 
-@app.route("/api/projects", methods=['GET'])
-def get_projects():
-    return json.dumps(list(projects.keys()))
+@app.route("/api/delete/<name>", methods=['POST'])
+def delete_project(name):
+    mongo.delete_project(name)
+    return "project deleted"
 
 
-@app.route("/api/projectmeta/<name>")
-def get_project_meta(name):
-    project = get_project(name)
-    return json.dumps({'id': project.id_fields, 'numeric': project.numeric_fields, 'discrete': project.discrete_fields})
+def to_filter(arg, value):
+    values = value.split()
+    field = arg[1:]
+    if arg[0] == 'n':
+        nfilters = []
+        for val in values:
+            m = NUM_RANGE_PATTERN.match(val)
+            if not m:
+                continue
+            gt = "$gt" if m.group(1) == '(' else "$gte"
+            lt = "$lt" if m.group(4) == ')' else "$lte"
+            nfilters.append({ITEM_NUMERIC_PREFIX + "." + field: {gt: int(m.group(2)), lt: int(m.group(3))}})
+        return {"$or": nfilters}
+    elif arg[0] == 'd':
+        return {ITEM_DISCRETE_PREFIX + "." + field: {"$in": values}}
 
 
-@app.route("/api/projectdata/<name>")
-def get_project_data(name):
-    ret = ""
-    for item in mongo.get_items(name):
-        ret += str(item) + "<br/>"
-    return ret
+@app.route("/api/query/<name>")
+def query_project(name):
+    filters = []
+    amount = 50
+    offset = 0
+    sort_field = "_id"
+    sort_order = ASCENDING
+    for arg in request.args:
+        value = request.args.get(arg)
+        if not value:
+            continue
+        if arg == "amount":
+            amount = int(value)
+        elif arg == "offset":
+            offset = int(value)
+        elif arg == "sortField":
+            if value[0] == 'n':
+                sort_field = ITEM_NUMERIC_PREFIX + "." + value[1:]
+            else:
+                sort_field = value
+        elif arg == "sortOrder":
+            order_val = int(value)
+            if order_val == ASCENDING or order_val == DESCENDING:
+                sort_order = order_val
+        elif arg[0] == 'n' or arg[0] == 'd':
+            filters.append(to_filter(arg, value))
+
+    query = {} if not filters else {"$and": filters}
+    cursor = mongo.get_items(name, query)
+    total = cursor.count()
+    cursor.skip(offset).limit(amount).sort(sort_field, sort_order)
+    results = []
+    for result in cursor:
+        result[ITEM_IMAGE_KEY] = get_image_url(result[ITEM_IMAGE_KEY])
+        results.append(result)
+    return json_util.dumps({"results": results, "total": total, "amount": amount, "offset": offset})
 
 
 # pages
 
 @app.route("/", methods=['GET'])
 def home_page():
-    return render_template('index.html', projects=projects)
+    return render_template('index.html', projects=mongo.get_projects_names())
 
 
-@app.route("/results/<name>")
-def result_page(name):
-    filters = []
-    result_per_page = 50
-    page = 1
-    for arg in request.args:
-        value = request.args.get(arg)
-        if not value:
-            continue
-        if arg == "resultsper":
-            result_per_page = int(value)
-            continue
-        elif arg == "page":
-            page = int(value)
-        vals = value.split()
-        field = arg[1:]
-        if arg[0] == 'n':
-            nfilters = []
-            for val in vals:
-                m = NUM_RANGE_PATTERN.match(val)
-                if not m:
-                    continue
-                gt = "$gt" if m.group(1) == '(' else "$gte"
-                lt = "$lt" if m.group(4) == ')' else "$lte"
-                nfilters.append({DB_NUMERIC_PREFIX + '.' + field: {gt: int(m.group(2)), lt: int(m.group(3))}})
-            filters.append({"$or": nfilters})
-        elif arg[0] == 'd':
-            filters.append({DB_DISCRETE_PREFIX + '.' + field: {"$in": vals}})
-
-    query = {} if not filters else {"$and": filters}
-    print(query)
-    cursor = mongo.get_items(name, query)
-    total = cursor.count()
-    page = max(1, min(page, (total-1)//result_per_page+1))
-    cursor.skip((page-1)*result_per_page).limit(result_per_page)
-    results = []
-    for result in cursor:
-        result['img'] = SEAWEED_VOLUME_URL + result['img']
-        results.append(result)
-    return render_template('results.html', results=results, total=total, perpage=result_per_page, pageNo=page)
+@app.route("/status", methods=['GET'])
+def status_page():
+    projs = {}
+    for name in mongo.get_projects_names():
+        projs[name] = mongo.get_size(name)
+    return render_template('status.html', projects=projs)
 
 
 @app.route("/search/<name>")

@@ -1,7 +1,14 @@
 {% extends "base.html" %}
+
+{% block head %}
+<script>
+var project_name = '{{project.name}}';
+</script>
+{% endblock %}
+
 {% block content %}
 
-<form class="form-horizontal" id="search-form" action="/results/{{project.name}}">
+<form class="form-horizontal" id="search-form">
 
   <div class="col-lg-5">
     <h4 class="section-header">Numeric Filters</h4>
@@ -9,7 +16,8 @@
       <div class="form-group">
         <label for="n{{field}}" class="col-sm-3 control-label">{{field}}</label>
         <div class="col-sm-8">
-          <input type="text" name="n{{field}}" class="form-control" id="n{{field}}" placeholder="[MIN, MAX]">
+          <input type="text" name="n{{field}}" pattern="((\[|\()[0-9]+(\s)*,(\s)*[0-9]+(\]|\))(\s)*)+"
+                 class="form-control numeric-input" id="n{{field}}" title="invalid" placeholder="[MIN, MAX]">
         </div>
       </div>
     {% endfor %}
@@ -30,20 +38,41 @@
 
   <div class="col-lg-12">
     <div id="search-div">
-    Results per page
-    <input type="text" name="resultsper" size="4" placeholder=50>
-    <button type="submit" id="search-button" class="btn btn-default">Search</button>
+    Order By
+    <select class="form-control form-select" name="sortField">
+      <option value="date">date</option>
+      <option value="_id">id</option>
+      {% for field in project.numeric_fields %}
+      <option value="n{{field}}">numeric: {{field}}</option>
+      {% endfor %}
+    </select>
+    <select class="form-control form-select" name="sortOrder">
+      <option value=1>ascending</option>
+      <option value=-1>descending</option>
+    </select>
+    <button type="button" id="search-button" class="btn btn-default">Search</button>
     </div>
   </div>
 
   {% for field in project.discrete_fields.keys() %}
     <input type="hidden" name="d{{field}}" id="dinput-{{field}}">
   {% endfor %}
+  <input type="hidden" name="amount" id="amount-input">
+  <input type="hidden" name="offset" id="offset-input">
 
 </form>
 
+{% endblock %}
+
+{% block outer %}
+
+<div id="total-results" class="search-result-div"></div>
+<div id="result-images-div" class="search-result-div"></div>
+<div class="loader"></div>
+<div id="results-done"> That's it </div>
+
 {% for field in project.discrete_fields %}
-<div class="selectpop pop" id="pop-{{field}}">
+<div class="pop center-content discrete-pop" id="pop-{{field}}">
   <h5>{{field}}</h5>
   {% for value in project.discrete_fields[field] %}
   <div class="discrete-selection-box"><button class="btn btn-default discrete-selection">{{value}}</button></div>
@@ -52,6 +81,13 @@
 {% endfor %}
 
 <div class="pop overlay"></div>
+<div class="pop center-content detail-pop">
+  <div style="float:left; margin:0; width:70%;">
+  <img id="detailed-image"/>
+    </div>
+  <div id="detailed-info" style="float:left; margin:0; width:30%;">
+  </div>
+</div>
 
 {% endblock %}
 

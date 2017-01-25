@@ -1,4 +1,4 @@
-import pyapi
+from pyapi import Client
 
 name = 'p3'
 ids = ['date', 'time', 'frame']
@@ -6,9 +6,7 @@ numeric_fields = ['confidence', 'lol']
 discrete_fields = {'color': ['red', 'green', 'blue', 'orange'],
                    'value': ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']}
 
-client = pyapi.Client()
-
-project = client.create_project(name, ids, numeric_fields, discrete_fields)
+project = Client().create_project(name, ids, numeric_fields, discrete_fields)
 
 project.add_fdata('data/red0.jpg', 'data/red0.meta')
 project.add_fdata('data/red1.png', 'data/red1.meta')
